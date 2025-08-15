@@ -1,7 +1,7 @@
 // src/scraper/scraper.ts
 import { Page } from "puppeteer";
 import { HelpLocation } from "./types";
-import { SELECTORS, TARGET_URL } from "../config";
+import { SELECTORS, TARGET_URL, numOfPagesToScrape } from "../config";
 import { info } from "../utils/logger";
 import { sleep } from "../utils/sleep";
 
@@ -176,10 +176,11 @@ export async function scrapeAllHelpData(
   _postalCode: string
 ): Promise<PageBundle[]> {
   const bundles: PageBundle[] = [];
+  let pageCount = 0;
   let pageNum = startingPage();
   let prevSig: string | null = null;
 
-  while (true) {
+  while (true && pageCount <= numOfPagesToScrape) {
     const url = urlFor(pageNum);
     await page.goto(url, { waitUntil: "domcontentloaded" });
     info(`Loaded results page ${pageNum} via TARGET_URL`);
@@ -207,6 +208,7 @@ export async function scrapeAllHelpData(
     bundles.push({ pageNum, data });
     prevSig = sig;
     pageNum += 1;
+    pageCount += 1;
   }
 
   return bundles;
