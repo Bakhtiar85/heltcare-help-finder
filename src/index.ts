@@ -1,7 +1,7 @@
 import puppeteer from 'puppeteer';
 import path from 'path';
 import { scrapeAllHelpData } from './scraper/scraper';
-import { POSTAL_CODE, OUTPUT_DIR } from './config';
+import { OUTPUT_DIR, TARGET_URL } from './config';
 import { writeJSON } from './utils/fileUtils';
 import { info, error } from './utils/logger';
 
@@ -22,6 +22,8 @@ async function main() {
   page.setDefaultTimeout(60000);
 
   try {
+    const POSTAL_CODE = new URL(TARGET_URL).searchParams.get("zip_code") || 'no-zip';
+
     info(`Navigating to ${POSTAL_CODE} search...`);
     const allPages = await scrapeAllHelpData(page, POSTAL_CODE);
 
