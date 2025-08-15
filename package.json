@@ -4,6 +4,7 @@
   "description": "Scraper for Healthcare.gov local help finder using Puppeteer",
   "main": "src/index.ts",
   "scripts": {
+    "dev": "ts-node src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -21,5 +22,14 @@
   "bugs": {
     "url": "https://github.com/Bakhtiar85/heltcare-help-finder/issues"
   },
-  "homepage": "https://github.com/Bakhtiar85/heltcare-help-finder#readme"
+  "homepage": "https://github.com/Bakhtiar85/heltcare-help-finder#readme",
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "@types/puppeteer": "^5.4.7",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "puppeteer": "^24.16.2"
+  }
 }
