@@ -1,0 +1,25 @@
+{
+  "name": "heltcare-help-finder",
+  "version": "1.0.0",
+  "description": "Scraper for Healthcare.gov local help finder using Puppeteer",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Bakhtiar85/heltcare-help-finder.git"
+  },
+  "keywords": [
+    "scraper",
+    "puppeteer",
+    "healthcare",
+    "typescript"
+  ],
+  "author": "Bakhtiar85",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Bakhtiar85/heltcare-help-finder/issues"
+  },
+  "homepage": "https://github.com/Bakhtiar85/heltcare-help-finder#readme"
+}
