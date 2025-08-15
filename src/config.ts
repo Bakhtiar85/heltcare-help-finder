@@ -1,5 +1,6 @@
 // src/config.ts  (selectors unchanged; keeping here for clarity)
 export const BASE_URL = 'https://www.healthcare.gov/find-local-help/';
+export const TARGET_URL = "https://www.healthcare.gov/find-local-help/results?q=ORANGE+PARK%2C+FL+32073&lat=30.17055&lng=-81.7348&city=ORANGE+PARK&state=FL&zip_code=32073&mp=FFM&page=97&coverage=individual&types=agent&types=multistate&name=#97";
 
 // where JSON saves go (MM-DD-YY-ZIP-PAGE.json)
 export const OUTPUT_DIR = './output/json';
@@ -29,7 +30,9 @@ export const SELECTORS = {
 
   // list + pagination
   agentListOl: '#filter-results-container > div:nth-child(3) > div:nth-child(2) > div > div > div.ds-l-row > div > ol',
-  agentListItems: '#filter-results-container > div:nth-child(3) > div:nth-child(2) > div > div > div.ds-l-row > div > ol li',
+  // agentListItems: '#filter-results-container > div:nth-child(3) > div:nth-child(2) > div > div > div.ds-l-row > div > ol li',
+  agentListItems: '#filter-results-container > div:nth-child(3) > div:nth-child(2) > div > div > div.ds-l-row > div > ol > li',
+
   nextPage:
     'a[aria-label*="Next page"]:not([aria-disabled="true"]), button[aria-label*="Next page"]:not([aria-disabled="true"])'
 } as const;

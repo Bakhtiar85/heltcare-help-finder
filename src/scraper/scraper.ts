@@ -1,7 +1,7 @@
 // src/scraper/scraper.ts
 import { Page } from "puppeteer";
 import { HelpLocation } from "./types";
-import { SELECTORS } from "../config";
+import { SELECTORS, TARGET_URL } from "../config";
 import { info } from "../utils/logger";
 import { sleep } from "../utils/sleep";
 
@@ -12,8 +12,6 @@ type PageBundle = { pageNum: number; data: HelpLocation[] };
  * You can paste the exact URL from the site for the ZIP/area you want.
  * The scraper will change only the `page` param and the anchor (#).
  */
-const TARGET_URL =
-  "https://www.healthcare.gov/find-local-help/results?q=ORANGE+PARK%2C+FL+32073&lat=30.17055&lng=-81.7348&city=ORANGE+PARK&state=FL&zip_code=32073&mp=FFM&page=95&coverage=individual&types=agent&types=multistate&name=#95";
 
 /** Build a URL for a specific page number by tweaking only page + hash */
 function urlFor(pageNum: number): string {
@@ -47,45 +45,108 @@ async function waitForResultsList(page: Page) {
 
 /** Extract one page of results into HelpLocation[] */
 async function extractPage(page: Page): Promise<HelpLocation[]> {
-  return page.$$eval(SELECTORS.agentListItems, (items) =>
-    items.map((li) => {
-      const getText = (el: Element | null) => (el?.textContent || "").trim();
+  return page.$$eval(SELECTORS.agentListItems, (items) => {
+    const norm = (s: string) => s.replace(/\s+/g, " ").trim();
+    const visibleText = (el: Element | null): string => {
+      if (!el) return "";
+      const clone = el.cloneNode(true) as Element;
+      // drop screen-reader-only nodes like the word "to"
+      clone.querySelectorAll(".ds-u-visibility--screen-reader").forEach((n) => n.remove());
+      return norm(clone.textContent || "");
+    };
 
-      const name =
-        getText(li.querySelector('h3, h2, [data-cy="result-name"]')) || "";
+    const findLabeledValue = (li: Element, labelRe: RegExp): string | undefined => {
+      const span = Array.from(li.querySelectorAll("span")).find((s) =>
+        labelRe.test((s.textContent || "").trim())
+      );
+      if (!span) return undefined;
+      const row = (span.closest(".ds-l-row") as Element | null) || span.parentElement?.parentElement;
+      if (!row) return undefined;
+      const kids = Array.from(row.children) as Element[];
+      const valEl = kids.find((c) => !c.className.includes("ds-u-font-weight--bold")) || kids[1] || row;
+      return visibleText(valEl);
+    };
 
-      const addressEl =
-        (li.querySelector("address") as Element | null) ||
-        (li.querySelector('[itemprop="address"]') as Element | null);
+    return (items as Element[])
+      .map((li) => {
+        // --- basics ---
+        const name = visibleText(li.querySelector('h3, h2, [data-cy="result-name"]'));
+        if (!name) return null; // guard against nested li or malformed items
 
-      const addressBlock = (addressEl?.textContent || "")
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean);
+        const addressEl =
+          (li.querySelector("address") as Element | null) ||
+          (li.querySelector('[itemprop="address"]') as Element | null);
 
-      const address = addressBlock[0] || "";
+        const addressLines = (addressEl?.textContent || "")
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
 
-      const cityStateZipLine = addressBlock[1] || "";
-      const m =
-        cityStateZipLine.match(
-          /^(.+?),\s*([A-Z]{2})\s*(\d{5})(?:-\d{4})?$/
-        ) || [];
-      const city = m[1] || "";
-      const state = m[2] || "";
-      const zip = m[3] || "";
+        const address = addressLines[0] || "";
+        const cityStateZipLine = addressLines[1] || "";
+        const m =
+          cityStateZipLine.match(/^(.+?),\s*([A-Z]{2})\s*(\d{5})(?:-\d{4})?$/) || [];
+        const city = m[1] || "";
+        const state = m[2] || "";
+        const zip = m[3] || "";
 
-      const phoneEl = li.querySelector('a[href^="tel:"]') as HTMLElement | null;
-      const phone =
-        (phoneEl?.textContent || "").trim() ||
-        (li.querySelector('[data-cy="phone"]') as HTMLElement | null)?.textContent?.trim() ||
-        undefined;
+        const phone = visibleText(li.querySelector('a[href^="tel:"]')) || undefined;
 
-      const websiteEl = li.querySelector('a[href^="http"]') as HTMLAnchorElement | null;
-      const website = (websiteEl && (websiteEl.getAttribute("href") || "").trim()) || undefined;
+        const websiteEl = li.querySelector('a[href^="http"]') as HTMLAnchorElement | null;
+        const website = (websiteEl?.getAttribute("href") || "").trim() || undefined;
 
-      return { name, address, city, state, zip, phone, website };
-    })
-  );
+        // --- new fields ---
+        const yearsText = visibleText(li.querySelector(".ds-u-font-size--md"));
+        const yearsMatch = yearsText.match(/(\d+)\s+year/i);
+        const yearsOfService = yearsMatch ? parseInt(yearsMatch[1], 10) : undefined;
+
+        const roles = Array.from(li.querySelectorAll(".ds-c-badge.flh-c-badge"))
+          .map((b) => visibleText(b))
+          .filter(Boolean);
+
+        const emailEl = li.querySelector('a[href^="mailto:"]') as HTMLAnchorElement | null;
+        const email =
+          (emailEl?.getAttribute("title") || emailEl?.textContent || "").trim() || undefined;
+
+        const languagesStr = findLabeledValue(li, /^\s*Languages spoken\s*$/i);
+        const languages =
+          languagesStr?.split(/,|\n/).map((s) => s.trim()).filter(Boolean) || undefined;
+
+        const licensedStr = findLabeledValue(li, /^\s*Licensed in\s*$/i);
+        const licensedIn =
+          licensedStr?.split(",").map((s) => s.trim()).filter(Boolean) || undefined;
+
+        const hours: Record<string, string> = {};
+        const dayAbbr = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        const hourRows = Array.from(li.querySelectorAll(".ds-l-row.ds-u-margin-bottom--1"));
+        for (const row of hourRows) {
+          const day = visibleText(
+            row.querySelector('.ds-l-col--2.ds-u-font-weight--bold [aria-hidden="true"]')
+          );
+          if (!dayAbbr.includes(day)) continue;
+          const valEl = row.querySelector(":scope > div:not(.ds-l-col--2)") as Element | null;
+          const time = visibleText(valEl || row); // no "to" now
+          if (time) hours[day] = time;
+        }
+
+        return {
+          name,
+          address,
+          city,
+          state,
+          zip,
+          phone,
+          website,
+          yearsOfService,
+          roles: roles.length ? roles : undefined,
+          email,
+          languages,
+          licensedIn,
+          hours: Object.keys(hours).length ? (hours as any) : undefined,
+        };
+      })
+      .filter(Boolean) as any;
+  });
 }
 
 /** Lightweight signature of the list to detect duplicates across pages */
