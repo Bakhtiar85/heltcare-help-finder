@@ -1,0 +1,85 @@
+<!-- public/index.html -->
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Healthcare Help Finder – Control Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/assets/style.css" />
+</head>
+
+<body>
+    <header class="site-header">
+        <h1>Healthcare Help Finder</h1>
+        <p class="muted">Configure target and run the scraper.</p>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <div class="container-head">
+                <h2 class="card-title">Scrape Settings</h2>
+                <div id="status" class="status" role="status" aria-live="polite"></div>
+                <div id="latest" class="muted" style="margin-top:8px;"></div>
+            </div>
+            <form id="scrape-form" class="grid-form">
+                <label>
+                    <span>Target URL</span>
+                    <input id="targetUrl" name="targetUrl" type="text" required />
+                </label>
+                <label>
+                    <span>Starting Page</span>
+                    <input id="startPage" name="startPage" type="number" min="1" required />
+                </label>
+                <label>
+                    <span>Pages To Scrape (limit)</span>
+                    <input id="pageLimit" name="pageLimit" type="number" min="1" required />
+                </label>
+                <div class="actions">
+                    <button id="runBtn" type="submit">Run Scrape</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2 class="card-title">Browse JSON</h2>
+
+            <div class="grid-form" style="grid-template-columns: 1fr auto;">
+                <label>
+                    <span>Select local JSON</span>
+                    <!-- Hidden file input triggered by the Load button -->
+                    <input id="fileInput" type="file" accept=".json,application/json" style="display:none" />
+                </label>
+                <div class="actions">
+                    <button id="loadBtn" type="button">Load (.json)</button>
+                </div>
+            </div>
+
+            <div class="table-wrap" style="margin-top:12px;">
+                <table class="table" id="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Phone</th>
+                            <th>Email</th>
+                            <th>Languages</th>
+                        </tr>
+                    </thead>
+                    <tbody id="data-body">
+                        <tr>
+                            <td colspan="4" class="muted">Click “Load (.json)” and pick a file.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <span class="muted">Ready.</span>
+    </footer>
+
+    <script src="/assets/script.js"></script>
+</body>
+
+</html>
