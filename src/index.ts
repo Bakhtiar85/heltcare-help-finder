@@ -1,3 +1,4 @@
+// src/index.ts
 import puppeteer from 'puppeteer';
 import path from 'path';
 import { scrapeAllHelpData } from './scraper/scraper';
@@ -25,18 +26,26 @@ async function main() {
     const POSTAL_CODE = new URL(TARGET_URL).searchParams.get("zip_code") || 'no-zip';
 
     info(`Navigating to ${POSTAL_CODE} search...`);
-    const allPages = await scrapeAllHelpData(page, POSTAL_CODE);
 
+    // write each page as soon as it's scraped; also build a combined array
     const dateStamp = mmddyy();
     let total = 0;
+    const combined: any[] = [];
 
-    for (const { pageNum, data } of allPages) {
+    const allPages = await scrapeAllHelpData(page, POSTAL_CODE, async ({ pageNum, data }) => {
       total += data.length;
       const filename = `${dateStamp}-${POSTAL_CODE}-${pageNum}.json`;
       const fullPath = path.join(OUTPUT_DIR, filename);
       await writeJSON(fullPath, data);
       info(`Saved page ${pageNum} (${data.length} records) to ${fullPath}`);
-    }
+      combined.push(...data);
+    });
+
+    // final combined file (no pageNum)
+    const combinedFilename = `${dateStamp}-${POSTAL_CODE}.json`;
+    const combinedPath = path.join(OUTPUT_DIR, combinedFilename);
+    await writeJSON(combinedPath, combined);
+    info(`Saved combined file (${combined.length} records) to ${combinedPath}`);
 
     info(`Done. Collected ${total} records across ${allPages.length} page(s).`);
   } catch (err) {

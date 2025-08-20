@@ -170,10 +170,12 @@ async function listSignature(page: Page): Promise<string | null> {
 /**
  * Main entry called by index.ts.
  * `postalCode` is unused in URL-driven mode; kept for signature compatibility.
+ * Optional `onPage` lets the caller persist each page immediately.
  */
 export async function scrapeAllHelpData(
   page: Page,
-  _postalCode: string
+  _postalCode: string,
+  onPage?: (bundle: PageBundle) => Promise<void> | void
 ): Promise<PageBundle[]> {
   const bundles: PageBundle[] = [];
   let pageCount = 0;
@@ -205,7 +207,13 @@ export async function scrapeAllHelpData(
       break;
     }
 
-    bundles.push({ pageNum, data });
+    const bundle = { pageNum, data };
+    // emit immediately so caller can persist per-page
+    if (onPage) {
+      await onPage(bundle);
+    }
+
+    bundles.push(bundle);
     prevSig = sig;
     pageNum += 1;
     pageCount += 1;

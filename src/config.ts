@@ -1,9 +1,9 @@
 // src/config.ts  (selectors unchanged; keeping here for clarity)
 export const BASE_URL = 'https://www.healthcare.gov/find-local-help/';
 
-const startingPage = 1;
-export const numOfPagesToScrape = 2;
-export const TARGET_URL = `https://www.healthcare.gov/find-local-help/results?q=ORANGE+PARK%2C+FL+32073&lat=30.17055&lng=-81.7348&city=ORANGE+PARK&state=FL&zip_code=32073&mp=FFM&page=${startingPage}&coverage=individual&types=agent&types=multistate&name=#${startingPage}`;
+const startingPage = 4;
+export const numOfPagesToScrape = 5;
+export const TARGET_URL = `https://www.healthcare.gov/find-local-help/results?q=PENSACOLA%2C+FL+32501&lat=30.42407&lng=-87.22443&city=PENSACOLA&state=FL&zip_code=32501&mp=FFM&page=${startingPage}&coverage=individual&types=agent&types=multistate&name=#${startingPage}`;
 
 // where JSON saves go (MM-DD-YY-ZIP-PAGE.json)
 export const OUTPUT_DIR = './output/json';
