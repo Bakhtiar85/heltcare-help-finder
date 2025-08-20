@@ -6,9 +6,11 @@ import path from 'path';
 import { OUTPUT_DIR, TARGET_URL, numOfPagesToScrape } from './config';
 import { runScrapeUIControlled } from './index';
 import { info, error } from './utils/logger';
+import nodemailer from 'nodemailer';
 
 const PORT = 8080;
 const PUBLIC_DIR = path.join(process.cwd(), 'public');
+const TEMPLATE_PATH = path.join(OUTPUT_DIR, 'email_template.json');
 
 function contentType(filePath: string): string {
     const ext = path.extname(filePath).toLowerCase();
@@ -51,12 +53,58 @@ function startingPageFrom(urlStr: string): number {
     }
 }
 
+function readJsonBody<T = any>(req: http.IncomingMessage): Promise<T> {
+    return new Promise((resolve, reject) => {
+        let data = '';
+        req.on('data', (c) => (data += c));
+        req.on('end', () => {
+            try {
+                resolve(data ? JSON.parse(data) : {});
+            } catch (e) {
+                reject(e);
+            }
+        });
+        req.on('error', reject);
+    });
+}
+
+function transporterOrNull() {
+    const host = process.env.SMTP_HOST;
+    const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : undefined;
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+    if (!host || !port || !user || !pass) return null;
+
+    return nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
+        auth: { user, pass },
+    });
+}
+
+async function readTemplate() {
+    try {
+        await ensureDir(OUTPUT_DIR);
+        const raw = await fs.readFile(TEMPLATE_PATH, 'utf-8');
+        return JSON.parse(raw);
+    } catch {
+        return { subject: '', message: '', updatedAt: null as null | string };
+    }
+}
+async function writeTemplate(subject: string, message: string) {
+    await ensureDir(OUTPUT_DIR);
+    const payload = { subject, message, updatedAt: new Date().toISOString() };
+    await fs.writeFile(TEMPLATE_PATH, JSON.stringify(payload, null, 2), 'utf-8');
+    return payload;
+}
+
 const server = http.createServer(async (req, res) => {
     try {
         const u = new URL(req.url || '/', `http://${req.headers.host}`);
 
-        // -------- API routes --------
-        if (u.pathname === '/api/defaults') {
+        // ---------- API: defaults ----------
+        if (req.method === 'GET' && u.pathname === '/api/defaults') {
             const defaults = {
                 targetUrl: TARGET_URL,
                 startPage: startingPageFrom(TARGET_URL),
@@ -67,14 +115,8 @@ const server = http.createServer(async (req, res) => {
             return;
         }
 
-        if (u.pathname === '/api/files') {
-            const files = await listCombinedFiles();
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ files }));
-            return;
-        }
-
-        if (u.pathname === '/api/run') {
+        // ---------- API: run scraper ----------
+        if (req.method === 'GET' && u.pathname === '/api/run') {
             const targetUrl = u.searchParams.get('targetUrl') || TARGET_URL;
             const startPage = parseInt(u.searchParams.get('startPage') || '1', 10) || 1;
             const pageLimit =
@@ -83,13 +125,21 @@ const server = http.createServer(async (req, res) => {
 
             info(`UI run: startPage=${startPage}, pageLimit=${pageLimit}`);
             const result = await runScrapeUIControlled({ targetUrl, startPage, pageLimit });
-
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({ ok: true, ...result }));
             return;
         }
 
-        if (u.pathname === '/download') {
+        // ---------- API: list files ----------
+        if (req.method === 'GET' && u.pathname === '/api/files') {
+            const files = await listCombinedFiles();
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ files }));
+            return;
+        }
+
+        // ---------- API: download a combined file ----------
+        if (req.method === 'GET' && u.pathname === '/download') {
             const f = u.searchParams.get('f');
             if (!f) {
                 res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' });
@@ -111,13 +161,130 @@ const server = http.createServer(async (req, res) => {
             return;
         }
 
-        // -------- Static files from /public --------
+        // ---------- API: template (save/load composed subject/message) ----------
+        if (u.pathname === '/api/template') {
+            if (req.method === 'GET') {
+                const t = await readTemplate();
+                res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: true, ...t }));
+                return;
+            }
+            if (req.method === 'POST') {
+                try {
+                    const body = await readJsonBody<{ subject: string; message: string }>(req);
+                    const saved = await writeTemplate(body.subject || '', body.message || '');
+                    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: true, ...saved }));
+                } catch (e: any) {
+                    res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, error: e?.message || 'template save failed' }));
+                }
+                return;
+            }
+        }
+
+        // ---------- API: send emails ----------
+        if (req.method === 'POST' && u.pathname === '/api/send') {
+            try {
+                const body = await readJsonBody<{
+                    subject: string;
+                    message: string;
+                    recipients: Array<{ name?: string; email?: string }>;
+                }>(req);
+
+                const subject = (body.subject || '').trim();
+                const message = (body.message || '').trim();
+                const recipients = Array.isArray(body.recipients) ? body.recipients : [];
+
+                if (!subject || !message || recipients.length === 0) {
+                    res.writeHead(400, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, error: 'Missing subject/message/recipients' }));
+                    return;
+                }
+
+                // save current template
+                await writeTemplate(subject, message);
+
+                const tx = transporterOrNull();
+                if (!tx) {
+                    res.writeHead(400, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, error: 'SMTP not configured' }));
+                    return;
+                }
+
+                const personalize = (tpl: string, name?: string) =>
+                    tpl.replace(/\[\s*USERNAME\s*\]/gi, name ?? '');
+
+                const from = process.env.SMTP_FROM || process.env.SMTP_USER!;
+                const results: Array<{ email: string; ok: boolean; error?: string }> = [];
+
+                for (const r of recipients) {
+                    const to = (r.email || '').trim();
+                    if (!to) {
+                        results.push({ email: '', ok: false, error: 'Missing recipient email' });
+                        continue;
+                    }
+                    try {
+                        await tx.sendMail({
+                            from,
+                            to,
+                            subject,
+                            text: personalize(message, r.name || ''),
+                        });
+                        results.push({ email: to, ok: true });
+                    } catch (e: any) {
+                        results.push({ email: to, ok: false, error: e?.message || 'send failed' });
+                    }
+                }
+
+                res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: true, results }));
+            } catch (e: any) {
+                res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: false, error: e?.message || 'internal error' }));
+            }
+            return;
+        }
+
+        // ---------- API: update a server-side JSON file (if it exists in OUTPUT_DIR) ----------
+        if (req.method === 'POST' && u.pathname === '/api/update-file') {
+            try {
+                const body = await readJsonBody<{ filename: string; data: any }>(req);
+                const filename = (body.filename || '').trim();
+                if (!filename) {
+                    res.writeHead(400, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, error: 'Missing filename' }));
+                    return;
+                }
+                const full = path.join(OUTPUT_DIR, filename);
+                if (!full.startsWith(path.resolve(OUTPUT_DIR))) {
+                    res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, error: 'Forbidden' }));
+                    return;
+                }
+                try {
+                    await fs.stat(full);
+                } catch {
+                    res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ ok: false, error: 'File not found on server' }));
+                    return;
+                }
+                await fs.writeFile(full, JSON.stringify(body.data ?? [], null, 2), 'utf-8');
+                res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: true }));
+            } catch (e: any) {
+                res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' });
+                res.end(JSON.stringify({ ok: false, error: e?.message || 'internal error' }));
+            }
+            return;
+        }
+
+        // ---------- Static: /public ----------
         let filePath = path.join(
             PUBLIC_DIR,
             u.pathname === '/' ? 'index.html' : decodeURIComponent(u.pathname.replace(/^\/+/, ''))
         );
 
-        // prevent path traversal
         if (!filePath.startsWith(PUBLIC_DIR)) {
             res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
             res.end('Forbidden');
@@ -134,7 +301,6 @@ const server = http.createServer(async (req, res) => {
             res.end(data);
             return;
         } catch {
-            // fallback to index.html for unknown routes
             try {
                 const fallback = path.join(PUBLIC_DIR, 'index.html');
                 const data = await fs.readFile(fallback);

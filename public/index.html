@@ -42,12 +42,14 @@
         </section>
 
         <section class="card">
-            <h2 class="card-title">Browse JSON</h2>
+            <div class="container-head">
+                <h2 class="card-title">Browse JSON</h2>
+                <button id="composeBtn" type="button">Compose Email</button>
+            </div>
 
             <div class="grid-form" style="grid-template-columns: 1fr auto;">
                 <label>
                     <span>Select local JSON</span>
-                    <!-- Hidden file input triggered by the Load button -->
                     <input id="fileInput" type="file" accept=".json,application/json" style="display:none" />
                 </label>
                 <div class="actions">
@@ -63,11 +65,12 @@
                             <th>Phone</th>
                             <th>Email</th>
                             <th>Languages</th>
+                            <th>Send</th>
                         </tr>
                     </thead>
                     <tbody id="data-body">
                         <tr>
-                            <td colspan="4" class="muted">Click “Load (.json)” and pick a file.</td>
+                            <td colspan="5" class="muted">Click “Load (.json)” and pick a file.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -78,6 +81,30 @@
     <footer class="site-footer">
         <span class="muted">Ready.</span>
     </footer>
+
+    <!-- Compose Modal -->
+    <div id="composeModal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div class="modal-card">
+            <h3 class="modal-title">Compose Email</h3>
+            <label class="modal-field">
+                <span>Subject</span>
+                <input id="emailSubject" type="text" placeholder="Subject line" />
+            </label>
+            <label class="modal-field">
+                <span>Message</span>
+                <textarea id="emailBody" rows="8"
+                    placeholder="Hi, [ USERNAME ],&#10;&#10;&lt;!== email content ==&gt;&#10;&#10;greetings&#10;name"></textarea>
+            </label>
+            <div class="modal-actions">
+                <button id="saveEmailTempBtn" type="button">Save as Template</button>
+                <button id="sendAllBtn" type="button">Send To All</button>
+                <!-- <button id="sendOneBtn" type="button">Send</button> -->
+                <button id="cancelComposeBtn" type="button" class="btn-secondary">Cancel</button>
+            </div>
+            <div id="modalNote" class="muted" style="margin-top:8px;"></div>
+        </div>
+    </div>
 
     <script src="/assets/script.js"></script>
 </body>

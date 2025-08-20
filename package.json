@@ -26,11 +26,13 @@
   "homepage": "https://github.com/Bakhtiar85/heltcare-help-finder#readme",
   "devDependencies": {
     "@types/node": "^24.2.1",
+    "@types/nodemailer": "^7.0.0",
     "@types/puppeteer": "^5.4.7",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
   },
   "dependencies": {
+    "nodemailer": "^7.0.5",
     "puppeteer": "^24.16.2"
   }
 }
