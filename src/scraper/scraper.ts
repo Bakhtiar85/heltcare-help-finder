@@ -13,18 +13,24 @@ type PageBundle = { pageNum: number; data: HelpLocation[] };
  * The scraper will change only the `page` param and the anchor (#).
  */
 
+type ScrapeOpts = {
+  targetUrl?: string;
+  startPage?: number;
+  pageLimit?: number;
+};
+
 /** Build a URL for a specific page number by tweaking only page + hash */
-function urlFor(pageNum: number): string {
-  const u = new URL(TARGET_URL);
+function urlFor(pageNum: number, baseUrl: string): string {
+  const u = new URL(baseUrl);
   u.searchParams.set("page", String(pageNum));
   u.hash = `#${pageNum}`;
   return u.toString();
 }
 
-/** Try to derive starting page from TARGET_URL; default to 1 */
-function startingPage(): number {
+/** Try to derive starting page from URL; default to 1 */
+function startingPageFrom(urlStr: string): number {
   try {
-    const u = new URL(TARGET_URL);
+    const u = new URL(urlStr);
     const p = parseInt(u.searchParams.get("page") || "1", 10);
     return Number.isFinite(p) && p > 0 ? p : 1;
   } catch {
@@ -34,12 +40,9 @@ function startingPage(): number {
 
 /** Wait until the results list items are present on the page */
 async function waitForResultsList(page: Page) {
-  // first, ensure the results container is present (defensive)
   try {
     await page.waitForSelector(SELECTORS.resultsContainer, { timeout: 30000 });
-  } catch {
-    // continue; some pages render list even if container selector changes
-  }
+  } catch { }
   await page.waitForSelector(SELECTORS.agentListItems, { timeout: 30000 });
 }
 
@@ -50,7 +53,6 @@ async function extractPage(page: Page): Promise<HelpLocation[]> {
     const visibleText = (el: Element | null): string => {
       if (!el) return "";
       const clone = el.cloneNode(true) as Element;
-      // drop screen-reader-only nodes like the word "to"
       clone.querySelectorAll(".ds-u-visibility--screen-reader").forEach((n) => n.remove());
       return norm(clone.textContent || "");
     };
@@ -69,9 +71,8 @@ async function extractPage(page: Page): Promise<HelpLocation[]> {
 
     return (items as Element[])
       .map((li) => {
-        // --- basics ---
         const name = visibleText(li.querySelector('h3, h2, [data-cy="result-name"]'));
-        if (!name) return null; // guard against nested li or malformed items
+        if (!name) return null;
 
         const addressEl =
           (li.querySelector("address") as Element | null) ||
@@ -95,7 +96,6 @@ async function extractPage(page: Page): Promise<HelpLocation[]> {
         const websiteEl = li.querySelector('a[href^="http"]') as HTMLAnchorElement | null;
         const website = (websiteEl?.getAttribute("href") || "").trim() || undefined;
 
-        // --- new fields ---
         const yearsText = visibleText(li.querySelector(".ds-u-font-size--md"));
         const yearsMatch = yearsText.match(/(\d+)\s+year/i);
         const yearsOfService = yearsMatch ? parseInt(yearsMatch[1], 10) : undefined;
@@ -125,7 +125,7 @@ async function extractPage(page: Page): Promise<HelpLocation[]> {
           );
           if (!dayAbbr.includes(day)) continue;
           const valEl = row.querySelector(":scope > div:not(.ds-l-col--2)") as Element | null;
-          const time = visibleText(valEl || row); // no "to" now
+          const time = visibleText(valEl || row);
           if (time) hours[day] = time;
         }
 
@@ -169,24 +169,29 @@ async function listSignature(page: Page): Promise<string | null> {
 
 /**
  * Main entry called by index.ts.
- * `postalCode` is unused in URL-driven mode; kept for signature compatibility.
+ * `_postalCode` is unused in URL-driven mode; kept for signature compatibility.
  * Optional `onPage` lets the caller persist each page immediately.
+ * Optional `opts` lets the caller override targetUrl/startPage/pageLimit for UI control.
  */
 export async function scrapeAllHelpData(
   page: Page,
   _postalCode: string,
-  onPage?: (bundle: PageBundle) => Promise<void> | void
+  onPage?: (bundle: PageBundle) => Promise<void> | void,
+  opts: ScrapeOpts = {}
 ): Promise<PageBundle[]> {
+  const baseUrl = opts.targetUrl || TARGET_URL;
+  const limit = typeof opts.pageLimit === "number" ? opts.pageLimit : numOfPagesToScrape;
+  let pageNum = typeof opts.startPage === "number" ? opts.startPage : startingPageFrom(baseUrl);
+
   const bundles: PageBundle[] = [];
   let pageCount = 0;
-  let pageNum = startingPage();
   let prevSig: string | null = null;
 
-  while (true && pageCount <= numOfPagesToScrape) {
-    const url = urlFor(pageNum);
+  while (true && pageCount <= limit) {
+    const url = urlFor(pageNum, baseUrl);
     await page.goto(url, { waitUntil: "domcontentloaded" });
     info(`Loaded results page ${pageNum} via TARGET_URL`);
-    await sleep(200); // tiny human-ish pause
+    await sleep(200);
 
     try {
       await waitForResultsList(page);
@@ -208,10 +213,7 @@ export async function scrapeAllHelpData(
     }
 
     const bundle = { pageNum, data };
-    // emit immediately so caller can persist per-page
-    if (onPage) {
-      await onPage(bundle);
-    }
+    if (onPage) await onPage(bundle);
 
     bundles.push(bundle);
     prevSig = sig;
