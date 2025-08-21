@@ -24,7 +24,7 @@
             </div>
             <form id="scrape-form" class="grid-form">
                 <label>
-                    <span>Target URL</span>
+                    <span>Target URL: <i>https://www.healthcare.gov/find-local-help/results...</i></span>
                     <input id="targetUrl" name="targetUrl" type="text" required />
                 </label>
                 <label>
@@ -43,19 +43,19 @@
 
         <section class="card">
             <div class="container-head">
-                <h2 class="card-title">Browse JSON</h2>
+                <h2 class="card-title">Browse JSON: <i id="selectedFileName"></i></h2>
                 <button id="composeBtn" type="button">Compose Email</button>
-            </div>
-
-            <div class="grid-form" style="grid-template-columns: 1fr auto;">
-                <label>
-                    <span>Select local JSON</span>
-                    <input id="fileInput" type="file" accept=".json,application/json" style="display:none" />
-                </label>
-                <div class="actions">
-                    <button id="loadBtn" type="button">Load (.json)</button>
+                <div class="grid-form" style="grid-template-columns: 1fr auto;">
+                    <label class="hidden">
+                        <span>Select local JSON</span>
+                        <input id="fileInput" type="file" accept=".json,application/json" style="display:none" />
+                    </label>
+                    <div class="actions">
+                        <button id="loadBtn" type="button">Load (.json)</button>
+                    </div>
                 </div>
             </div>
+
 
             <div class="table-wrap" style="margin-top:12px;">
                 <table class="table" id="data-table">
@@ -65,12 +65,13 @@
                             <th>Phone</th>
                             <th>Email</th>
                             <th>Languages</th>
+                            <th>Status</th>
                             <th>Send</th>
                         </tr>
                     </thead>
                     <tbody id="data-body">
                         <tr>
-                            <td colspan="5" class="muted">Click “Load (.json)” and pick a file.</td>
+                            <td colspan="6" class="muted">Click “Load (.json)” and pick a file.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -99,7 +100,7 @@
             <div class="modal-actions">
                 <button id="saveEmailTempBtn" type="button">Save as Template</button>
                 <button id="sendAllBtn" type="button">Send To All</button>
-                <!-- <button id="sendOneBtn" type="button">Send</button> -->
+                <button id="sendOneBtn" type="button">Send</button>
                 <button id="cancelComposeBtn" type="button" class="btn-secondary">Cancel</button>
             </div>
             <div id="modalNote" class="muted" style="margin-top:8px;"></div>

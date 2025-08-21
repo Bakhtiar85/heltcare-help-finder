@@ -6,6 +6,7 @@ const form = document.getElementById('scrape-form');
 const targetUrlEl = document.getElementById('targetUrl');
 const startPageEl = document.getElementById('startPage');
 const pageLimitEl = document.getElementById('pageLimit');
+const selectedFileNameEl = document.getElementById('selectedFileName');
 
 // local JSON loader
 const fileInput = document.getElementById('fileInput');
@@ -83,6 +84,7 @@ function openModal(forIndex = null) {
         ? 'Send To All will only send to rows that have a valid email.'
         : `This will send only to: ${currentData[forIndex]?.name || ''} (${currentData[forIndex]?.email || 'no email'})`;
     sendOneBtn.disabled = forIndex === null;
+    sendAllBtn.disabled = forIndex !== null;
 }
 function closeModal() {
     modal.classList.add('hidden');
@@ -93,7 +95,7 @@ function renderRows(items) {
     currentData = Array.isArray(items) ? items.slice() : [];
     tbody.innerHTML = '';
     if (!Array.isArray(items) || items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="muted">No data.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="muted">No data.</td></tr>';
         return;
     }
     items.forEach((it, idx) => {
@@ -102,6 +104,7 @@ function renderRows(items) {
         const tdPhone = document.createElement('td');
         const tdEmail = document.createElement('td');
         const tdLang = document.createElement('td');
+        const tdStatus = document.createElement('td');
         const tdSend = document.createElement('td');
 
         tdName.textContent = it?.name || '-';
@@ -113,6 +116,26 @@ function renderRows(items) {
         else if (typeof it?.languages === 'string' && it.languages) langs = it.languages;
         tdLang.textContent = langs;
 
+        // --- status cell (✓ / ✗ / blank) with hover time ---
+        const sent = it?.emailSent;
+        const when = it?.emailTimeStamp || it?.emailSentAt || '';
+        if (sent === true) {
+            tdStatus.textContent = '✓';
+            tdStatus.title = when ? `Sent: ${new Date(when).toLocaleString()}` : 'Sent';
+            tdStatus.style.color = '#16a34a'; // green
+            tdStatus.style.fontWeight = '600';
+            tdStatus.style.textAlign = 'center';
+        } else if (sent === false) {
+            tdStatus.textContent = '✗';
+            tdStatus.title = when ? `Last attempt: ${new Date(when).toLocaleString()}` : 'Failed';
+            tdStatus.style.color = '#dc2626'; // red
+            tdStatus.style.fontWeight = '600';
+            tdStatus.style.textAlign = 'center';
+        } else {
+            tdStatus.textContent = '';
+            tdStatus.title = '';
+        }
+
         const btn = document.createElement('button');
         btn.textContent = 'Send';
         btn.type = 'button';
@@ -123,6 +146,7 @@ function renderRows(items) {
         tr.appendChild(tdPhone);
         tr.appendChild(tdEmail);
         tr.appendChild(tdLang);
+        tr.appendChild(tdStatus); // new status column
         tr.appendChild(tdSend);
         tbody.appendChild(tr);
     });
@@ -163,6 +187,7 @@ function personalize(tpl, name) {
 async function sendTo(recipients) {
     const subject = (emailSubjectEl.value || '').trim();
     const message = (emailBodyEl.value || '').trim();
+    const latestSelectedFileName = selectedFileNameEl.innerText || '';
     if (!subject || !message) {
         setStatus('Subject and message are required.', false);
         return;
@@ -181,7 +206,7 @@ async function sendTo(recipients) {
         const r = await fetch('/api/send', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ subject, message, recipients }),
+            body: JSON.stringify({ subject, message, recipients, latestSelectedFileName }),
         });
         const j = await r.json();
         if (!r.ok || !j.ok) throw new Error(j?.error || 'send failed');
@@ -207,8 +232,8 @@ async function sendTo(recipients) {
         });
 
         renderRows(currentData);
-        const savedToServer = await saveUpdatedFileOrDownload();
-        setStatus(savedToServer ? 'Emails sent and file updated on server.' : 'Emails sent; updated file downloaded.');
+        // const savedToServer = await saveUpdatedFileOrDownload();
+        // setStatus(savedToServer ? 'Emails sent and file updated on server.' : 'Emails sent; updated file downloaded.');
     } catch (e) {
         setStatus('Failed to send emails. Check SMTP settings.', false);
     } finally {
@@ -227,6 +252,7 @@ fileInput.addEventListener('change', async (e) => {
         currentFilename = basename(file.name);
         renderRows(data);
         setLatest(currentFilename);
+        selectedFileNameEl.textContent = currentFilename;
         setStatus(`Loaded ${Array.isArray(data) ? data.length : 0} record(s) from "${file.name}".`);
     } catch (err) {
         console.error(err);
@@ -266,6 +292,10 @@ saveEmailTempBtn.addEventListener('click', async () => {
     const message = emailBodyEl.value;
     if (!subject || !message) { setStatus('Subject and message are required.', false); return; }
     await saveTemplate(subject, message);
+    setTimeout(() => {
+        setStatus('Email template saved.');
+        closeModal();
+    }, 800);
 });
 
 // ---- Scraper controls (unchanged) ----

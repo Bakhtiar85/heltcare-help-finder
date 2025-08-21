@@ -11,6 +11,11 @@ import nodemailer from 'nodemailer';
 const PORT = 8080;
 const PUBLIC_DIR = path.join(process.cwd(), 'public');
 const TEMPLATE_PATH = path.join(OUTPUT_DIR, 'email_template.json');
+let SMTP_HOST = 'smtp.gmail.com';
+let SMTP_PORT = '587';
+let SMTP_USER = 'attockofficeworkonly@gmail.com';
+let SMTP_PASS = 'qaym tedc odwb gsdk';
+let SMTP_FROM = "Your Name <no-reply@gmail.com>";
 
 function contentType(filePath: string): string {
     const ext = path.extname(filePath).toLowerCase();
@@ -69,10 +74,10 @@ function readJsonBody<T = any>(req: http.IncomingMessage): Promise<T> {
 }
 
 function transporterOrNull() {
-    const host = process.env.SMTP_HOST;
-    const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : undefined;
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
+    const host = SMTP_HOST;
+    const port = SMTP_PORT ? parseInt(SMTP_PORT, 10) : undefined;
+    const user = SMTP_USER;
+    const pass = SMTP_PASS;
     if (!host || !port || !user || !pass) return null;
 
     return nodemailer.createTransport({
@@ -183,13 +188,14 @@ const server = http.createServer(async (req, res) => {
             }
         }
 
-        // ---------- API: send emails ----------
+        // --- POST /api/send ---
         if (req.method === 'POST' && u.pathname === '/api/send') {
             try {
                 const body = await readJsonBody<{
                     subject: string;
                     message: string;
                     recipients: Array<{ name?: string; email?: string }>;
+                    latestSelectedFileName?: string;
                 }>(req);
 
                 const subject = (body.subject || '').trim();
@@ -215,8 +221,11 @@ const server = http.createServer(async (req, res) => {
                 const personalize = (tpl: string, name?: string) =>
                     tpl.replace(/\[\s*USERNAME\s*\]/gi, name ?? '');
 
-                const from = process.env.SMTP_FROM || process.env.SMTP_USER!;
+                const from = SMTP_FROM || SMTP_USER!;
                 const results: Array<{ email: string; ok: boolean; error?: string }> = [];
+
+                console.log('from:', from);
+                console.log('Sending emails to:', recipients.map(r => r.email).join(', '));
 
                 for (const r of recipients) {
                     const to = (r.email || '').trim();
@@ -236,6 +245,11 @@ const server = http.createServer(async (req, res) => {
                         results.push({ email: to, ok: false, error: e?.message || 'send failed' });
                     }
                 }
+
+                // NEW: persist status back to the selected file as requested
+                await persistEmailStatusToFile(body.latestSelectedFileName || '', results);
+
+                console.log('Email sending results:', results);
 
                 res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ ok: true, results }));
@@ -317,6 +331,41 @@ const server = http.createServer(async (req, res) => {
         error(`Server error: ${e?.message}`);
         res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
         res.end('Internal server error');
+    }
+
+    // helper inside src/server.ts
+    async function persistEmailStatusToFile(
+        filename: string,
+        results: Array<{ email: string; ok: boolean }>
+    ) {
+        if (!filename) return;
+        const safe = path.basename(filename); // prevent traversal
+        const full = path.join(OUTPUT_DIR, safe);
+
+        try {
+            const raw = await fs.readFile(full, 'utf-8');
+            const data = JSON.parse(raw);
+            if (!Array.isArray(data)) return;
+
+            const byEmail = new Map(results.map(r => [r.email.trim().toLowerCase(), r.ok]));
+            const now = new Date().toISOString();
+
+            const updated = data.map((row: any) => {
+                const em = (row?.email || '').trim().toLowerCase();
+                if (em && byEmail.has(em)) {
+                    return {
+                        ...row,
+                        emailSent: byEmail.get(em),
+                        emailTimeStamp: now,
+                    };
+                }
+                return row;
+            });
+
+            await fs.writeFile(full, JSON.stringify(updated, null, 2), 'utf-8');
+        } catch (err) {
+            console.error('Failed to update file with email status:', err);
+        }
     }
 });
 
